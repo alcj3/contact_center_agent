@@ -29,9 +29,12 @@ def chat(payload: ChatRequest) -> ChatResponse:
     classification = classifier.predict(payload.message.text)
     escalate, _ = should_escalate(state, confidence=classification.confidence)
 
+    state.confidence = classification.confidence
+    state.escalated = escalate
+    state.intent_history.append(classification.intent)
+
     response_text = responder.generate(classification.intent, payload.message.text, history=state.messages[:-1])
 
-    # TODO: Record classifier confidence, intent counts, and escalation events in metrics.
     return ChatResponse(
         conversation_id=payload.conversation_id,
         response_text=response_text,

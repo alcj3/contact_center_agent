@@ -27,12 +27,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
     state.messages.append(payload.message.text)
 
     classification = classifier.predict(payload.message.text)
-    escalate = should_escalate(
-        user_text=payload.message.text,
-        confidence=classification.confidence,
-        sentiment_score=state.sentiment_score,
-        repeated_intent_count=1,
-    )
+    escalate, _ = should_escalate(state, confidence=classification.confidence)
 
     response_text = responder.generate(classification.intent, payload.message.text, history=state.messages[:-1])
 

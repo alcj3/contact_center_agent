@@ -34,7 +34,7 @@ def chat(payload: ChatRequest) -> ChatResponse:
         repeated_intent_count=1,
     )
 
-    response_text = responder.generate(classification.intent, payload.message.text)
+    response_text = responder.generate(classification.intent, payload.message.text, history=state.messages[:-1])
 
     # TODO: Record classifier confidence, intent counts, and escalation events in metrics.
     return ChatResponse(

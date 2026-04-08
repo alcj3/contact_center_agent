@@ -29,5 +29,5 @@ class MetricsResponse(BaseModel):
     total_conversations: int
     average_messages_per_conversation: float
     escalation_rate: float
-    average_classifier_confidence: float
+    average_sentiment_score: float
     intent_distribution: dict[str, int]

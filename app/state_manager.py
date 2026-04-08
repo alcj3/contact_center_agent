@@ -9,6 +9,9 @@ class ConversationState:
     last_intent: str | None = None
     failed_attempts: int = 0
     sentiment_score: float = 0.0
+    escalated: bool = False
+    confidence: float = 0.0
+    intent_history: list[str] = field(default_factory=list)
 
 
 conversation_store: dict[str, ConversationState] = {}

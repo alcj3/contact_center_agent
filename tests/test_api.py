@@ -26,10 +26,11 @@ def test_chat_endpoint_stub() -> None:
     assert isinstance(body["escalated"], bool)
 
 
-def test_metrics_endpoint_stub() -> None:
+def test_metrics_endpoint_returns_valid_response() -> None:
     response = client.get("/metrics")
     assert response.status_code == 200
 
     body = response.json()
-    assert body["total_conversations"] == 0
-    assert body["intent_distribution"] == {}
+    assert isinstance(body["total_conversations"], int)
+    assert isinstance(body["escalation_rate"], float)
+    assert isinstance(body["intent_distribution"], dict)

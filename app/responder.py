@@ -30,23 +30,22 @@ _FALLBACK_RESPONSE = (
 class ResponseEngine:
     def __init__(self, client: Any = None) -> None:
         if client is None:
-            import anthropic
-            client = anthropic.Anthropic()
+            from openai import OpenAI
+            client = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
         self.client = client
 
     def generate(self, intent: str, user_text: str, history: list[str]) -> str:
         system_prompt = _SYSTEM_PROMPTS.get(intent, _DEFAULT_SYSTEM_PROMPT)
 
-        messages = [{"role": "user", "content": msg} for msg in history]
+        messages = [{"role": "system", "content": system_prompt}]
+        messages += [{"role": "user", "content": msg} for msg in history]
         messages.append({"role": "user", "content": user_text})
 
         try:
-            response = self.client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=1024,
-                system=system_prompt,
+            response = self.client.chat.completions.create(
+                model="llama3.2",
                 messages=messages,
             )
-            return response.content[0].text
+            return response.choices[0].message.content
         except Exception:
             return _FALLBACK_RESPONSE

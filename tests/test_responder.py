@@ -12,13 +12,23 @@ from app.responder import ResponseEngine
 # ---------------------------------------------------------------------------
 
 def _make_client(reply: str = "How can I help with your bill?") -> MagicMock:
-    """Return a mock Anthropic client whose .messages.create() returns `reply`."""
-    mock_message = MagicMock()
-    mock_message.content = [MagicMock(text=reply)]
+    """Return a mock OpenAI-compatible client whose .chat.completions.create() returns `reply`."""
+    mock_choice = MagicMock()
+    mock_choice.message.content = reply
+
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
 
     mock_client = MagicMock()
-    mock_client.messages.create.return_value = mock_message
+    mock_client.chat.completions.create.return_value = mock_response
     return mock_client
+
+
+def _get_system_prompt(engine: ResponseEngine) -> str:
+    """Extract the system message content from the last call to chat.completions.create."""
+    messages_sent = engine.client.chat.completions.create.call_args.kwargs.get("messages", [])
+    system_messages = [m["content"] for m in messages_sent if m.get("role") == "system"]
+    return system_messages[0] if system_messages else ""
 
 
 # ---------------------------------------------------------------------------
@@ -41,27 +51,21 @@ def test_generate_billing_intent() -> None:
     engine = ResponseEngine(client=_make_client("Here is your billing summary."))
     engine.generate(intent="Billing", user_text="I was charged twice", history=[])
 
-    call_args = engine.client.messages.create.call_args
-    system_prompt = call_args.kwargs.get("system", "")
-    assert "billing" in system_prompt.lower()
+    assert "billing" in _get_system_prompt(engine).lower()
 
 
 def test_generate_technical_intent() -> None:
     engine = ResponseEngine(client=_make_client("Let's troubleshoot your issue."))
     engine.generate(intent="Technical", user_text="my app keeps crashing", history=[])
 
-    call_args = engine.client.messages.create.call_args
-    system_prompt = call_args.kwargs.get("system", "")
-    assert "technical" in system_prompt.lower()
+    assert "technical" in _get_system_prompt(engine).lower()
 
 
 def test_generate_cancellation_intent() -> None:
     engine = ResponseEngine(client=_make_client("I'm sorry to hear you want to cancel."))
     engine.generate(intent="Cancellation", user_text="cancel my account", history=[])
 
-    call_args = engine.client.messages.create.call_args
-    system_prompt = call_args.kwargs.get("system", "")
-    assert "cancellation" in system_prompt.lower()
+    assert "cancellation" in _get_system_prompt(engine).lower()
 
 
 def test_generate_different_intents_produce_different_system_prompts() -> None:
@@ -71,10 +75,7 @@ def test_generate_different_intents_produce_different_system_prompts() -> None:
     billing_engine.generate(intent="Billing", user_text="overcharged", history=[])
     technical_engine.generate(intent="Technical", user_text="app broken", history=[])
 
-    billing_prompt = billing_engine.client.messages.create.call_args.kwargs.get("system", "")
-    technical_prompt = technical_engine.client.messages.create.call_args.kwargs.get("system", "")
-
-    assert billing_prompt != technical_prompt
+    assert _get_system_prompt(billing_engine) != _get_system_prompt(technical_engine)
 
 
 # ---------------------------------------------------------------------------
@@ -86,22 +87,22 @@ def test_generate_includes_history_in_messages() -> None:
     engine = ResponseEngine(client=_make_client())
     engine.generate(intent="Billing", user_text="why was I charged?", history=history)
 
-    call_args = engine.client.messages.create.call_args
-    messages_sent = call_args.kwargs.get("messages", [])
+    messages_sent = engine.client.chat.completions.create.call_args.kwargs.get("messages", [])
     message_texts = [m["content"] for m in messages_sent if isinstance(m.get("content"), str)]
 
     for prior_msg in history:
         assert any(prior_msg in text for text in message_texts)
 
 
-def test_generate_empty_history_still_works() -> None:
+def test_generate_empty_history_sends_system_and_user_messages() -> None:
     engine = ResponseEngine(client=_make_client("Sure!"))
     engine.generate(intent="General Question", user_text="hello", history=[])
 
-    call_args = engine.client.messages.create.call_args
-    messages_sent = call_args.kwargs.get("messages", [])
-    # Only the current user_text message should be present
-    assert len(messages_sent) == 1
+    messages_sent = engine.client.chat.completions.create.call_args.kwargs.get("messages", [])
+    roles = [m["role"] for m in messages_sent]
+
+    # With no history, only the system prompt and current user message are sent
+    assert roles == ["system", "user"]
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +111,7 @@ def test_generate_empty_history_still_works() -> None:
 
 def test_generate_returns_fallback_on_api_error() -> None:
     mock_client = MagicMock()
-    mock_client.messages.create.side_effect = Exception("API timeout")
+    mock_client.chat.completions.create.side_effect = Exception("API timeout")
 
     engine = ResponseEngine(client=mock_client)
     result = engine.generate(intent="Billing", user_text="help", history=[])
@@ -121,7 +122,7 @@ def test_generate_returns_fallback_on_api_error() -> None:
 
 def test_generate_fallback_does_not_raise() -> None:
     mock_client = MagicMock()
-    mock_client.messages.create.side_effect = RuntimeError("connection refused")
+    mock_client.chat.completions.create.side_effect = RuntimeError("connection refused")
 
     engine = ResponseEngine(client=mock_client)
     try:
